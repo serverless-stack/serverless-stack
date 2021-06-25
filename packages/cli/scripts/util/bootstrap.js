@@ -13,6 +13,14 @@ const path = require("path");
 const fetch = require("node-fetch");
 const { getChildLogger, initializeLogger } = require("@serverless-stack/core");
 const { serializeError } = require("../../lib/serializeError");
+const { wrapWithLocalXray, xrayFlushSegments } = require("./xray");
+
+// Handle pre-exit tasks
+const handlePreExitTasks = async (exitCode) => {
+  await xrayFlushSegments();
+
+  process.exit(exitCode);
+};
 
 const CALLBACK_USED = Symbol("CALLBACK_USED");
 const CALLBACK_IS_INVOKING = Symbol("CALLBACK_IS_INVOKING");
@@ -33,7 +41,7 @@ const APP_BUILD_PATH = argv[3];
 initializeLogger(APP_BUILD_PATH);
 const logger = getChildLogger("lambda");
 
-start();
+wrapWithLocalXray(ORIG_HANDLER_PATH, start);
 
 async function start() {
   let handler;
@@ -57,12 +65,12 @@ async function fetchRequest() {
   const headers = response.headers.raw();
   EVENT = await response.json();
   CONTEXT = {
-    invokedFunctionArn: headers['lambda-runtime-invoked-function-arn'],
-    awsRequestId: headers['lambda-runtime-aws-request-id'],
-    identity: JSON.parse(headers['lambda-runtime-cognito-identity']),
-    clientContext: JSON.parse(headers['lambda-runtime-client-context']),
+    invokedFunctionArn: headers["lambda-runtime-invoked-function-arn"],
+    awsRequestId: headers["lambda-runtime-aws-request-id"],
+    identity: JSON.parse(headers["lambda-runtime-cognito-identity"]),
+    clientContext: JSON.parse(headers["lambda-runtime-client-context"]),
   };
-  TIMEOUT_AT = headers['lambda-runtime-deadline-ms'];
+  TIMEOUT_AT = headers["lambda-runtime-deadline-ms"];
 }
 
 async function processEvents(handler) {
@@ -92,7 +100,7 @@ async function processEvents(handler) {
   // async handler
   if (CONTEXT[ASYNC_HANDLER] === true) {
     logger.debug("processEvents async handler => exit 0");
-    return invokeResponse(result, () => process.exit(0));
+    return invokeResponse(result, () => handlePreExitTasks(0));
   }
 
   // sync handler w/ callback called
@@ -111,7 +119,7 @@ async function processEvents(handler) {
         CONTEXT[EXIT_ON_CALLBACK] = true;
       } else {
         logger.debug("callbackWaitsForEmptyEventLoop false => exit 0");
-        process.exit(0);
+        handlePreExitTasks(0);
       }
     } else {
       logger.debug("callbackWaitsForEmptyEventLoop true");
@@ -180,7 +188,7 @@ function getHandler() {
           // to FALSE
           if (context[EXIT_ON_CALLBACK] === true) {
             logger.debug("callback EXIT_ON_CALLBACK set => exit 0");
-            process.exit(0);
+            handlePreExitTasks(0);
           }
         });
       };
@@ -230,7 +238,7 @@ function invokeErrorAndExit(err) {
     },
     () => {
       logger.debug(`invokeError [${ts}] completed`);
-      process.exit(1);
+      handlePreExitTasks(1);
     }
   );
 }
