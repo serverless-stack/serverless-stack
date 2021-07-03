@@ -432,7 +432,7 @@ new Api(this, "Api", {
 
 You can also secure specific routes using JWT by setting the `authorizationType` per route.
 
-```js {13}
+```js {11}
 import { HttpJwtAuthorizer } from "@aws-cdk/aws-apigatewayv2-authorizers";
 
 new Api(this, "Api", {
@@ -443,10 +443,8 @@ new Api(this, "Api", {
   routes: {
     "GET /public": "src/public.main",
     "GET /private": {
-      function: {
-        handler: "src/private.main",
-        authorizationType: ApiAuthorizationType.JWT,
-      },
+      authorizationType: ApiAuthorizationType.JWT,
+      function: "src/private.main",
     },
   },
 });
@@ -497,7 +495,7 @@ new Api(this, "Api", {
 
 You can also secure specific routes using a Lambda authorizer by setting the `authorizationType` per route.
 
-```js {15}
+```js {13}
 import { HttpLambdaAuthorizer } from "@aws-cdk/aws-apigatewayv2-authorizers";
 
 new Api(this, "Api", {
@@ -510,10 +508,8 @@ new Api(this, "Api", {
   routes: {
     "GET /public": "src/public.main",
     "GET /private": {
-      function: {
-        handler: "src/private.main",
-        authorizationType: ApiAuthorizationType.CUSTOM,
-      },
+      authorizationType: ApiAuthorizationType.CUSTOM,
+      function: "src/private.main",
     },
   },
 });

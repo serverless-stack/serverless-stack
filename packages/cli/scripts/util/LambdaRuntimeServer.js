@@ -9,7 +9,6 @@ const prompts = require("prompts");
 const bodyParser = require("body-parser");
 const detect = require("detect-port-alt");
 const { ApolloServer, gql } = require("apollo-server-express");
-
 const { getChildLogger } = require("@serverless-stack/core");
 const logger = getChildLogger("api-server");
 
