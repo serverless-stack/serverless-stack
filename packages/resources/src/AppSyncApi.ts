@@ -6,6 +6,8 @@ import * as secretsmanager from "@aws-cdk/aws-secretsmanager";
 
 import { App } from "./App";
 import { Table } from "./Table";
+import { Stack } from "./Stack";
+import { ISstConstruct, ISstConstructInfo } from "./Construct";
 import { Function as Fn, FunctionProps, FunctionDefinition } from "./Function";
 import { Permissions } from "./util/permission";
 
@@ -72,7 +74,7 @@ export type AppSyncApiCdkResolverProps = Omit<
 // Construct
 /////////////////////
 
-export class AppSyncApi extends cdk.Construct {
+export class AppSyncApi extends cdk.Construct implements ISstConstruct {
   public readonly graphqlApi: appsync.GraphqlApi;
   private readonly functionsByDsKey: { [key: string]: Fn };
   private readonly dataSourcesByDsKey: {
@@ -137,6 +139,11 @@ export class AppSyncApi extends cdk.Construct {
         this.addResolver(this, key, resolvers[key])
       );
     }
+
+    ///////////////////
+    // Register Construct
+    ///////////////////
+    root.registerConstruct(this);
   }
 
   public get url(): string {
@@ -184,6 +191,20 @@ export class AppSyncApi extends cdk.Construct {
         );
       }
     });
+  }
+
+  public getConstructInfo(): ISstConstructInfo {
+    // imported
+    if (!cdk.Token.isUnresolved(this.graphqlApi.apiId)) {
+      return {
+        graphqlApiId: this.graphqlApi.apiId,
+      };
+    }
+    // created
+    const cfn = this.graphqlApi.node.defaultChild as appsync.CfnGraphQLApi;
+    return {
+      graphqlApiLogicalId: Stack.of(this).getLogicalId(cfn),
+    };
   }
 
   private addDataSource(

@@ -14,7 +14,7 @@ const lambdaDefaultPolicy = {
   Resource: "*",
 };
 
-test("s3Bucket-is-undefined", async () => {
+test("constructor: s3Bucket is undefined", async () => {
   const stack = new Stack(new App(), "stack");
   const bucket = new Bucket(stack, "Bucket");
   expect(bucket.bucketArn).toBeDefined();
@@ -24,23 +24,50 @@ test("s3Bucket-is-undefined", async () => {
   expectCdk(stack).to(countResources("Custom::S3BucketNotifications", 0));
 });
 
-test("s3Bucket-is-s3BucketConstruct", async () => {
-  const stack = new Stack(new App(), "stack");
-  const bucket = new s3.Bucket(stack, "T", {
+test("constructor: s3Bucket is imported", async () => {
+  const app = new App();
+  app.registerConstruct = jest.fn();
+  const stack = new Stack(app, "stack");
+  const bucket = new Bucket(stack, "Bucket", {
+    s3Bucket: s3.Bucket.fromBucketArn(stack, "T", "arn:aws:s3:::my-bucket"),
+  });
+  expect(bucket.bucketArn).toBeDefined();
+  expect(bucket.bucketName).toBeDefined();
+  expectCdk(stack).to(countResources("AWS::Lambda::Function", 0));
+  expectCdk(stack).to(countResources("AWS::S3::Bucket", 0));
+  expectCdk(stack).to(countResources("Custom::S3BucketNotifications", 0));
+
+  // test construct info
+  expect(app.registerConstruct).toHaveBeenCalledTimes(1);
+  expect(bucket.getConstructInfo()).toStrictEqual({
     bucketName: "my-bucket",
   });
-  new Bucket(stack, "Bucket", {
-    s3Bucket: bucket,
+});
+
+test("constructor: s3Bucket is construct", async () => {
+  const app = new App();
+  app.registerConstruct = jest.fn();
+  const stack = new Stack(app, "stack");
+  const bucket = new Bucket(stack, "Bucket", {
+    s3Bucket: new s3.Bucket(stack, "T", { bucketName: "my-bucket" }),
   });
   expect(bucket.bucketArn).toBeDefined();
   expect(bucket.bucketName).toBeDefined();
   expectCdk(stack).to(countResources("AWS::Lambda::Function", 0));
   expectCdk(stack).to(countResources("AWS::S3::Bucket", 1));
   expectCdk(stack).to(countResources("Custom::S3BucketNotifications", 0));
+
+  // test construct info
+  expect(app.registerConstruct).toHaveBeenCalledTimes(1);
+  expect(bucket.getConstructInfo()).toStrictEqual({
+    bucketLogicalId: "TD925BC7E",
+  });
 });
 
-test("s3Bucket-is-s3BucketProps", async () => {
-  const stack = new Stack(new App(), "stack");
+test("constructor: s3Bucket is props", async () => {
+  const app = new App();
+  app.registerConstruct = jest.fn();
+  const stack = new Stack(app, "stack");
   const bucket = new Bucket(stack, "Bucket", {
     s3Bucket: {
       bucketName: "my-bucket",
@@ -56,6 +83,12 @@ test("s3Bucket-is-s3BucketProps", async () => {
     })
   );
   expectCdk(stack).to(countResources("Custom::S3BucketNotifications", 0));
+
+  // test construct info
+  expect(app.registerConstruct).toHaveBeenCalledTimes(1);
+  expect(bucket.getConstructInfo()).toStrictEqual({
+    bucketLogicalId: "BucketD7FEB781",
+  });
 });
 
 /////////////////////////////

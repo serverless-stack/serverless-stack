@@ -6,6 +6,8 @@ import * as apigAuthorizers from "@aws-cdk/aws-apigatewayv2-authorizers";
 import * as apigIntegrations from "@aws-cdk/aws-apigatewayv2-integrations";
 
 import { App } from "./App";
+import { Stack } from "./Stack";
+import { ISstConstruct, ISstConstructInfo } from "./Construct";
 import { Function as Fn, FunctionProps, FunctionDefinition } from "./Function";
 import { Permissions } from "./util/permission";
 import * as apigV2Domain from "./util/apiGatewayV2Domain";
@@ -71,17 +73,23 @@ export interface ApiRouteProps {
 
 export type ApiCustomDomainProps = apigV2Domain.CustomDomainProps;
 
+interface ApiConstructRouteInfo {
+  readonly method: string;
+  readonly path: string;
+}
+
 /////////////////////
 // Construct
 /////////////////////
 
-export class Api extends cdk.Construct {
+export class Api extends cdk.Construct implements ISstConstruct {
   public readonly httpApi: apig.HttpApi;
   public readonly accessLogGroup?: logs.LogGroup;
   public readonly apiGatewayDomain?: apig.DomainName;
   public readonly acmCertificate?: acm.Certificate;
   private readonly _customDomainUrl?: string;
   private readonly functions: { [key: string]: Fn };
+  private readonly routesInfo: { [key: string]: ApiConstructRouteInfo };
   private readonly permissionsAttachedForAllRoutes: Permissions[];
   private readonly defaultFunctionProps?: FunctionProps;
   private readonly defaultAuthorizer?:
@@ -109,6 +117,7 @@ export class Api extends cdk.Construct {
       defaultPayloadFormatVersion,
     } = props || {};
     this.functions = {};
+    this.routesInfo = {};
     this.permissionsAttachedForAllRoutes = [];
     this.defaultFunctionProps = defaultFunctionProps;
     this.defaultAuthorizer = defaultAuthorizer;
@@ -198,6 +207,11 @@ export class Api extends cdk.Construct {
         this.addRoute(this, routeKey, routes[routeKey])
       );
     }
+
+    ///////////////////
+    // Register Construct
+    ///////////////////
+    root.registerConstruct(this);
   }
 
   public get url(): string {
@@ -248,6 +262,22 @@ export class Api extends cdk.Construct {
     }
 
     fn.attachPermissions(permissions);
+  }
+
+  public getConstructInfo(): ISstConstructInfo {
+    // imported
+    if (!cdk.Token.isUnresolved(this.httpApi.apiId)) {
+      return {
+        httpApiId: this.httpApi.apiId,
+        routes: this.routesInfo,
+      };
+    }
+    // created
+    const cfn = this.httpApi.node.defaultChild as apig.CfnApi;
+    return {
+      httpApiLogicalId: Stack.of(this).getLogicalId(cfn),
+      routes: this.routesInfo,
+    };
   }
 
   private buildCorsConfig(
@@ -378,6 +408,10 @@ export class Api extends cdk.Construct {
     // Store function
     ///////////////////
     this.functions[routeKey] = lambda;
+    this.routesInfo[routeKey] = {
+      method: methodStr,
+      path,
+    };
 
     return lambda;
   }

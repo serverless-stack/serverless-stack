@@ -1,6 +1,9 @@
 import * as cdk from "@aws-cdk/core";
 import * as s3 from "@aws-cdk/aws-s3";
 import * as lambdaEventSources from "@aws-cdk/aws-lambda-event-sources";
+import { App } from "./App";
+import { Stack } from "./Stack";
+import { ISstConstruct, ISstConstructInfo } from "./Construct";
 import { Function as Fn, FunctionProps, FunctionDefinition } from "./Function";
 import { Permissions } from "./util/permission";
 
@@ -23,7 +26,7 @@ export interface BucketNotificationProps {
 // Construct
 /////////////////////
 
-export class Bucket extends cdk.Construct {
+export class Bucket extends cdk.Construct implements ISstConstruct {
   public readonly s3Bucket: s3.Bucket;
   public readonly notificationFunctions: Fn[];
   private readonly permissionsAttachedForAllNotifications: Permissions[];
@@ -32,6 +35,7 @@ export class Bucket extends cdk.Construct {
   constructor(scope: cdk.Construct, id: string, props?: BucketProps) {
     super(scope, id);
 
+    const root = scope.node.root as App;
     const { s3Bucket, notifications, defaultFunctionProps } = props || {};
     this.notificationFunctions = [];
     this.permissionsAttachedForAllNotifications = [];
@@ -55,6 +59,11 @@ export class Bucket extends cdk.Construct {
     ///////////////////////////
 
     this.addNotifications(this, notifications || []);
+
+    ///////////////////
+    // Register Construct
+    ///////////////////
+    root.registerConstruct(this);
   }
 
   public get bucketArn(): string {
@@ -86,6 +95,20 @@ export class Bucket extends cdk.Construct {
     permissions: Permissions
   ): void {
     this.notificationFunctions[index].attachPermissions(permissions);
+  }
+
+  public getConstructInfo(): ISstConstructInfo {
+    // imported
+    if (!cdk.Token.isUnresolved(this.s3Bucket.bucketName)) {
+      return {
+        bucketName: this.s3Bucket.bucketName,
+      };
+    }
+    // created
+    const cfn = this.s3Bucket.node.defaultChild as s3.CfnBucket;
+    return {
+      bucketLogicalId: Stack.of(this).getLogicalId(cfn),
+    };
   }
 
   private addNotification(
