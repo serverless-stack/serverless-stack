@@ -1,6 +1,6 @@
 import * as cdk from "@aws-cdk/core";
-import { Api, ApiProps, ApiPayloadFormatVersion } from "./Api";
 import { FunctionDefinition } from "./Function";
+import { Api, ApiProps, ApiPayloadFormatVersion } from "./Api";
 
 /////////////////////
 // Interfaces
@@ -41,7 +41,7 @@ export class ApolloApi extends Api {
     });
   }
 
-  addRoutes(): void {
+  public addRoutes(): void {
     throw new Error(`Cannot add routes to the "${this.node.id}" ApolloApi`);
   }
 }

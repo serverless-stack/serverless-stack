@@ -9,12 +9,14 @@ const chalk = require("chalk");
 const WebSocket = require("ws");
 const esbuild = require("esbuild");
 const spawn = require("cross-spawn");
+const { PubSub } = require("apollo-server-express");
 const {
   logger,
   getChildLogger,
   STACK_DEPLOY_STATUS,
 } = require("@serverless-stack/core");
 const s3 = new AWS.S3();
+const pubsub = new PubSub();
 
 const paths = require("./util/paths");
 const {
@@ -38,6 +40,7 @@ const {
 const array = require("../lib/array");
 const Watcher = require("./util/Watcher");
 const objectUtil = require("../lib/object");
+const ConstructsState = require("./util/ConstructsState");
 const CdkWatcherState = require("./util/CdkWatcherState");
 const LambdaWatcherState = require("./util/LambdaWatcherState");
 const LambdaRuntimeServer = require("./util/LambdaRuntimeServer");
@@ -53,6 +56,7 @@ const WEBSOCKET_CLOSE_CODE = {
 const MOCK_SLOW_ESBUILD_RETRANSPILE_IN_MS = 0;
 
 let watcher;
+let constructsState;
 let cdkWatcherState;
 let lambdaWatcherState;
 let esbuildService;
@@ -91,12 +95,26 @@ module.exports = async function (argv, config, cliInfo) {
   // Deploy app
   await deployApp(argv, config, cliInfo, cacheData);
   const lambdaHandlers = await getDeployedLambdaHandlers();
+  const constructs = await getDeployedConstructs();
 
   logger.info("");
   logger.info("==========================");
   logger.info(" Starting Live Lambda Dev");
   logger.info("==========================");
   logger.info("");
+
+  constructsState = new ConstructsState({
+    region: config.region,
+    stage: config.stage,
+    constructs,
+    onConstructsUpdated: () => {
+      if (constructsState) {
+        pubsub.publish("CONSTRUCTS_UPDATED", {
+          constructsUpdated: constructsState.listConstructs(),
+        });
+      }
+    },
+  });
 
   cdkWatcherState = new CdkWatcherState({
     inputFiles: cdkInputFiles,
@@ -284,7 +302,7 @@ async function startWatcher() {
 }
 async function startRuntimeServer(port) {
   // note: 0.0.0.0 does not work on Windows
-  lambdaServer = new LambdaRuntimeServer();
+  lambdaServer = new LambdaRuntimeServer({ pubsub, constructsState });
   await lambdaServer.start("127.0.0.1", port);
 }
 function addInputListener() {
@@ -428,6 +446,12 @@ async function handleCdkReDeploy(cliInfo, cacheData, checksumData) {
     // to clone the value.
     checksumData = { ...checksumData };
 
+    // Load the new Lambda and constructs info that will be deployed
+    // note: we need to fetch the information now, because the files
+    //       can be changed while deploying.
+    const lambdaHandlers = await getDeployedLambdaHandlers();
+    const constructsInfo = await getDeployedConstructs();
+
     const deployRet = await deploy(cliInfo.cdkOptions);
     if (
       deployRet.some((stack) => stack.status === STACK_DEPLOY_STATUS.FAILED)
@@ -439,8 +463,8 @@ async function handleCdkReDeploy(cliInfo, cacheData, checksumData) {
     }
 
     // Update Lambda state
-    const lambdaHandlers = await getDeployedLambdaHandlers();
     lambdaWatcherState.handleUpdateLambdaHandlers(lambdaHandlers);
+    constructsState.handleUpdateConstructs(constructsInfo);
 
     // Update cache
     cacheData.appStacks = { checksumData, deployRet };
@@ -865,6 +889,22 @@ async function getDeployedLambdaHandlers() {
 
   return await fs.readJson(lambdaHandlersPath);
 }
+async function getDeployedConstructs() {
+  // Load Lambda handlers
+  // ie. [{"type":"Api","stack":"dev-playground-api","name":"Api"},{"type":"Cron","stack":"dev-playground-another","name":"Cron"}]
+
+  const filePath = path.join(
+    paths.appPath,
+    paths.appBuildDir,
+    "sst-constructs.json"
+  );
+
+  if (!(await checkFileExists(filePath))) {
+    throw new Error(`Failed to get the constructs info from the app`);
+  }
+
+  return await fs.readJson(filePath);
+}
 function checkCacheChanged(cacheDatum, checksumData) {
   if (!cacheDatum || !cacheDatum.checksumData || !cacheDatum.deployRet) {
     return true;
@@ -1019,7 +1059,7 @@ async function onClientMessage(message) {
   const eventSource = parseEventSource(event);
   const eventSourceDesc =
     eventSource === null ? " invoked" : ` invoked by ${eventSource}`;
-  clientLogger.info(
+  logLambdaRequest(
     chalk.grey(
       `${context.awsRequestId} REQUEST ${env.AWS_LAMBDA_FUNCTION_NAME} [${debugSrcPath}/${debugSrcHandler}]${eventSourceDesc}`
     )
@@ -1062,7 +1102,7 @@ async function onClientMessage(message) {
     handleResponse({ type: "failure", error: serializeError(e) });
 
     // print error
-    clientLogger.info(
+    logLambdaRequest(
       chalk.grey(`${context.awsRequestId} ${chalk.red("ERROR")} ${e.message}`)
     );
 
@@ -1128,7 +1168,7 @@ async function onClientMessage(message) {
         paths.appBuildDir,
       ],
       {
-        stdio: ["inherit", "inherit", "inherit", "ipc"],
+        stdio: ["pipe", "pipe", "pipe", "ipc"],
         cwd: paths.appPath,
         env: {
           ...getSystemEnv(),
@@ -1191,20 +1231,21 @@ async function onClientMessage(message) {
   }
 
   // For non-Node runtimes, stdio is set to 'pipe', need to print out the output
-  if (!isNodeRuntime(runtime)) {
-    lambda.stdout.on("data", (data) => {
-      data = data.toString();
-      clientLogger.trace(data);
-      lambdaLastStdData = data;
-      process.stdout.write(data);
-    });
-    lambda.stderr.on("data", (data) => {
-      data = data.toString();
-      clientLogger.trace(data);
-      lambdaLastStdData = data;
-      process.stderr.write(data);
-    });
-  }
+  // TODO
+  //if (!isNodeRuntime(runtime)) {
+  lambda.stdout.on("data", (data) => {
+    data = data.toString();
+    lambdaLastStdData = data;
+    logLambdaRequest(data, true);
+    process.stderr.write(data);
+  });
+  lambda.stderr.on("data", (data) => {
+    data = data.toString();
+    lambdaLastStdData = data;
+    logLambdaRequest(data, true);
+    process.stderr.write(data);
+  });
+  //}
 
   lambda.on("error", function (e) {
     clientLogger.debug("Failed to run local function", e);
@@ -1305,13 +1346,13 @@ async function onClientMessage(message) {
 
   function printLambdaResponse() {
     if (lambdaResponse.type === "timeout") {
-      clientLogger.info(
+      logLambdaRequest(
         chalk.grey(
           `${context.awsRequestId} ${chalk.red("ERROR")} Lambda timed out`
         )
       );
     } else if (lambdaResponse.type === "success") {
-      clientLogger.info(
+      logLambdaRequest(
         chalk.grey(
           `${context.awsRequestId} RESPONSE ${objectUtil.truncate(
             lambdaResponse.data,
@@ -1333,7 +1374,7 @@ async function onClientMessage(message) {
         // We will remove this hack after we create a stub in native runtime.
         errorMessage = lambdaResponse.rawError;
       }
-      clientLogger.info(
+      logLambdaRequest(
         `${chalk.grey(context.awsRequestId)} ${chalk.red("ERROR")}`,
         errorMessage
       );
@@ -1342,7 +1383,7 @@ async function onClientMessage(message) {
         lambdaResponse.code === 0
           ? "Runtime exited without providing a reason"
           : `Runtime exited with error: exit status ${lambdaResponse.code}`;
-      clientLogger.info(
+      logLambdaRequest(
         `${chalk.grey(context.awsRequestId)} ${chalk.red("ERROR")}`,
         message
       );
@@ -1433,4 +1474,13 @@ function getSystemEnv() {
   // credentials from the remote Lambda.
   delete env.AWS_PROFILE;
   return env;
+}
+function logLambdaRequest(message, trace) {
+  trace ? clientLogger.trace(message) : clientLogger.info(message);
+
+  pubsub.publish("LAMBDA_LOG_ADDED", {
+    logAdded: {
+      message: message.endsWith("\n") ? message : `${message}\n`,
+    },
+  });
 }

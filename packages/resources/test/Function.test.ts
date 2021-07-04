@@ -200,13 +200,13 @@ test("bundling-commandHooks-beforeBundling success", async () => {
     handler: "test/lambda.handler",
     bundle: {
       commandHooks: {
-        beforeBundling: (inputDir, outputDir): string[] => {
+        beforeBundling: (): string[] => {
           return ["echo beforeBundling"];
         },
-        beforeInstall: (inputDir, outputDir): string[] => {
+        beforeInstall: (): string[] => {
           return [];
         },
-        afterBundling: (inputDir, outputDir): string[] => {
+        afterBundling: (): string[] => {
           return [];
         },
       },
@@ -222,13 +222,13 @@ test("bundling-commandHooks-beforeBundling failed", async () => {
       handler: "test/lambda.handler",
       bundle: {
         commandHooks: {
-          beforeBundling: (inputDir, outputDir): string[] => {
+          beforeBundling: (): string[] => {
             return ["non-exist-command"];
           },
-          beforeInstall: (inputDir, outputDir): string[] => {
+          beforeInstall: (): string[] => {
             return [];
           },
-          afterBundling: (inputDir, outputDir): string[] => {
+          afterBundling: (): string[] => {
             return [];
           },
         },

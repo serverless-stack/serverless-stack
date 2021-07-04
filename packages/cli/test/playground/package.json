@@ -22,7 +22,8 @@
     "@aws-cdk/aws-stepfunctions-tasks": "1.105.0",
     "@aws-cdk/core": "1.105.0",
     "@serverless-stack/cli": "^0.30.0",
-    "@serverless-stack/resources": "^0.30.0"
+    "@serverless-stack/resources": "^0.30.0",
+    "apollo-server-lambda": "^2.25.2"
   },
   "license": "ISC",
   "devDependencies": {

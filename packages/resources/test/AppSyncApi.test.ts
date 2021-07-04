@@ -30,8 +30,10 @@ const lambdaDefaultPolicy = {
 // Test Constructor
 ///////////////////
 
-test("graphqlApi-undefined", async () => {
-  const stack = new Stack(new App(), "stack");
+test("constructor: graphqlApi is undefined", async () => {
+  const app = new App();
+  app.registerConstruct = jest.fn();
+  const stack = new Stack(app, "stack");
   const api = new AppSyncApi(stack, "Api", {});
   expect(api.url).toBeDefined();
   expectCdk(stack).to(
@@ -49,11 +51,19 @@ test("graphqlApi-undefined", async () => {
   expectCdk(stack).to(countResources("AWS::AppSync::ApiKey", 1));
   expectCdk(stack).to(countResources("AWS::AppSync::DataSource", 0));
   expectCdk(stack).to(countResources("AWS::AppSync::Resolver", 0));
+
+  // test construct info
+  expect(app.registerConstruct).toHaveBeenCalledTimes(1);
+  expect(api.getConstructInfo()).toStrictEqual({
+    graphqlApiLogicalId: "ApiCD79AAA0",
+  });
 });
 
-test("graphqlApi-props", async () => {
-  const stack = new Stack(new App(), "stack");
-  new AppSyncApi(stack, "Api", {
+test("constructor: graphqlApi is props", async () => {
+  const app = new App();
+  app.registerConstruct = jest.fn();
+  const stack = new Stack(app, "stack");
+  const api = new AppSyncApi(stack, "Api", {
     graphqlApi: {
       schema: appsync.Schema.fromAsset("test/schema.graphql"),
       xrayEnabled: false,
@@ -73,9 +83,15 @@ test("graphqlApi-props", async () => {
     })
   );
   expect(schemaDef.capturedValue.trim()).toEqual("# placeholder");
+
+  // test construct info
+  expect(app.registerConstruct).toHaveBeenCalledTimes(1);
+  expect(api.getConstructInfo()).toStrictEqual({
+    graphqlApiLogicalId: "ApiCD79AAA0",
+  });
 });
 
-test("graphqlApi-props-schema-string", async () => {
+test("constructor: graphqlApi is props-schema-string", async () => {
   const stack = new Stack(new App(), "stack");
   new AppSyncApi(stack, "Api", {
     graphqlApi: {
@@ -91,9 +107,11 @@ test("graphqlApi-props-schema-string", async () => {
   expect(schemaDef.capturedValue.trim()).toEqual("# placeholder");
 });
 
-test("graphqlApi-construct", async () => {
-  const stack = new Stack(new App(), "stack");
-  new AppSyncApi(stack, "Api", {
+test("constructor: graphqlApi is construct", async () => {
+  const app = new App();
+  app.registerConstruct = jest.fn();
+  const stack = new Stack(app, "stack");
+  const api = new AppSyncApi(stack, "Api", {
     graphqlApi: new appsync.GraphqlApi(stack, "GraphqlApi", {
       name: "existing-api",
     }),
@@ -103,6 +121,34 @@ test("graphqlApi-construct", async () => {
       Name: "existing-api",
     })
   );
+
+  // test construct info
+  expect(app.registerConstruct).toHaveBeenCalledTimes(1);
+  expect(api.getConstructInfo()).toStrictEqual({
+    graphqlApiLogicalId: "GraphqlApi1B6CF24C",
+  });
+});
+
+test("constructor: graphqlApi is imported", async () => {
+  const app = new App();
+  app.registerConstruct = jest.fn();
+  const stack = new Stack(app, "stack");
+  const api = new AppSyncApi(stack, "Api", {
+    graphqlApi: appsync.GraphqlApi.fromGraphqlApiAttributes(
+      stack,
+      "IGraphqlApi",
+      {
+        graphqlApiId: "abc",
+      }
+    ),
+  });
+  expectCdk(stack).to(countResources("AWS::AppSync::GraphQLApi", 0));
+
+  // test construct info
+  expect(app.registerConstruct).toHaveBeenCalledTimes(1);
+  expect(api.getConstructInfo()).toStrictEqual({
+    graphqlApiId: "abc",
+  });
 });
 
 test("dataSources-undefined", async () => {
