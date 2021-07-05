@@ -21,7 +21,7 @@ export class MainStack extends sst.Stack {
     });
 
     const api = new sst.WebSocketApi(this, "websocket-api", {
-      customDomain: "ws.sst.sh",
+      //customDomain: "ws.sst.sh",
       authorizationType: sst.WebSocketApiAuthorizationType.NONE,
       defaultFunctionProps: {
         runtime: "nodejs14.x",
