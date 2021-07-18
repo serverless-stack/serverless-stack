@@ -65,6 +65,7 @@
     "esbuild": "^0.8.31",
     "eslint": "^7.16.0",
     "fs-extra": "^9.0.1",
+    "graphql": "^15.5.1",
     "jest": "^26.1.0",
     "ts-jest": "^26.1.4",
     "typescript": "^4.2.3",
@@ -75,6 +76,10 @@
     "@types/cross-spawn": "^6.0.2",
     "@types/fs-extra": "^9.0.6",
     "@types/node": "^14.0.27"
+  },
+  "optionalDependencies": {
+    "@graphql-tools/load-files": "^6.3.2",
+    "@graphql-tools/merge": "^6.2.14"
   },
   "gitHead": "ef4db05a8b92a136204e65a70474ab529e55dbe6"
 }
